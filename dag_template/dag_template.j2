@@ -1,0 +1,77 @@
+from airflow import DAG
+from datetime import timedelta
+import yaml
+from importlib import import_module
+
+# Load YAML configuration
+with open('config.yaml', 'r') as file:
+    config = yaml.safe_load(file)
+
+default_args = {
+    'owner': '{{ default.owner }}',
+    'start_date': '{{ default.start_date }}',
+    'end_date': '{{ default.end_date }}',
+    'retries': {{ default.retries }},
+    'retry_delay': timedelta(seconds={{ default.retry_delay_sec }}),
+}
+
+dag = DAG(
+    '{{ dag_name }}',
+    default_args=default_args,
+    description='{{ dag_description }}',
+    schedule_interval='{{ default.schedule_interval }}',
+    max_active_runs={{ default.max_active_runs }},
+    default_view='{{ default.default_view }}',
+    orientation='{{ default.orientation }}',
+)
+
+{% macro create_task(task) %}
+    module_name, class_name = '{{ task.operator }}'.rsplit('.', 1)
+    OperatorClass = getattr(import_module(module_name), class_name)
+    return OperatorClass(task_id='{{ task.name }}', **{{ task.parameters }}, dag=dag)
+{% endmacro %}
+
+{% macro set_dependency(from_task, to_task) %}
+    {{ from_task }} >> {{ to_task }}
+{% endmacro %}
+
+# Define tasks and task groups
+tasks = {}
+task_groups = {}
+
+# Create TaskGroups and Tasks
+{% for group_name, group_details in task_groups.items() %}
+    with TaskGroup(group_id='{{ group_name }}', tooltip='{{ group_details.tooltip }}', dag=dag) as {{ group_name }}_group:
+        task_groups['{{ group_name }}'] = {{ group_name }}_group
+        {% for task in tasks %}
+            {% if task.task_group_name == group_name %}
+                tasks['{{ task.name }}'] = {{ create_task(task) }}
+            {% endif %}
+        {% endfor %}
+{% endfor %}
+
+# Setting up dependencies
+{% for task in tasks %}
+    {% if task.dependencies %}
+        {% for dependency in task.dependencies %}
+            {% if dependency in task_groups %}
+                {{ set_dependency('task_groups[dependency]', 'tasks[task.name]') }}
+            {% else %}
+                {{ set_dependency('tasks[dependency]', 'tasks[task.name]') }}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+{% endfor %}
+
+# Task Group level dependencies
+{% for group_name, group_details in task_groups.items() %}
+    {% if group_details.dependencies %}
+        {% for dependency in group_details.dependencies %}
+            {% if dependency in task_groups %}
+                {{ set_dependency('task_groups[dependency]', 'task_groups[group_name]') }}
+            {% else %}
+                {{ set_dependency('tasks[dependency]', 'task_groups[group_name]') }}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+{% endfor %}

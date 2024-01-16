@@ -292,3 +292,136 @@ def get_datasets_uri_yaml_file(file_path: str, datasets_filter: str) -> List[str
         raise FileNotFoundError(f"Error: File '{file_path}' not found.") from err
     except yaml.YAMLError as error:
         raise error
+
+
+def transform_config(original_config: Dict) -> Dict:
+    """transform original config to add parameters node"""
+
+    DEFAULT = 'default'
+    default_config = original_config.get(DEFAULT, {})
+    transformed_config = original_config.copy()
+    
+    params_excluded_key_list = ['operator', 'task_group_name', 'dependencies']
+    params_excluded_value_list = {}
+    
+    for name, config in original_config.items():
+        
+        # exclude default node
+        if name != 'default':
+
+            merged_config = merge_defaults_new(default_config, config)
+            
+            # Transform tasks to include explicit parameters
+            for task_name, task_details in merged_config.get('tasks', {}).items():
+                # Extracting specific keys to remain at the same level
+                for item in params_excluded_key_list:
+                    params_excluded_value_list[item] = task_details.pop(item, None)
+                    
+                # The rest of the keys become part of the 'parameters'
+                merged_config['tasks'][task_name] = {
+                    'parameters': task_details
+                }
+
+                # Re-adding the extracted keys to the task
+                for item in params_excluded_key_list:
+                    if params_excluded_value_list[item]:
+                        merged_config['tasks'][task_name][item] = params_excluded_value_list[item] 
+            
+            # update dag's config            
+            transformed_config[name] = merged_config
+
+    return transformed_config
+
+def merge_defaults(config: Dict) -> Dict:
+    default_config = config.get('default', {})
+    example_dag_config = config.get('example_dag', {})
+
+    # Merging default configuration into example_dag using dictionary comprehension
+    merged_config = {key: example_dag_config.get(key, default_config.get(key)) 
+                     for key in set(default_config) | set(example_dag_config)}
+
+    # Special handling for nested 'default_args' dictionary
+    default_args = default_config.get('default_args', {})
+    example_args = example_dag_config.get('default_args', {})
+    merged_args = {arg_key: example_args.get(arg_key, default_args.get(arg_key)) 
+                   for arg_key in set(default_args) | set(example_args)}
+
+    merged_config['default_args'] = merged_args
+
+    return merged_config
+
+
+def reorganize_dag_params(merged_config: Dict) -> Dict:
+    """Move parameters needed for creation of dag instance to its own node"""
+    
+    non_dag_level_params_key_list = ["task_groups", "tasks"]
+    non_dag_level_params_value_dict = {}
+    updated_config = {}
+    
+    # remove non dag level parameters
+    for item in non_dag_level_params_key_list:
+        non_dag_level_params_value_dict[item] = merged_config.pop(item, None)
+    
+    updated_config['parameters'] = merged_config
+    
+    for item in non_dag_level_params_key_list:
+        if non_dag_level_params_value_dict[item]:
+            updated_config[item] = non_dag_level_params_value_dict[item] 
+            
+    return updated_config
+
+
+def merge_defaults_updated(config: Dict) -> Dict:
+    """Merge parameters from default into each dag."""
+    
+    DEFAULT = 'default'
+    
+    default_config = config.get(DEFAULT, {})
+    
+    for dag_name, dag_config in config.items():
+        if dag_name != DEFAULT:
+            
+            # Merging default configuration into dag_params using dictionary comprehension
+            dag_params = {key: dag_config.get(key, default_config.get(key)) 
+                        for key in set(default_config) | set(dag_config)}
+
+            # Special handling for nested 'default_args' dictionary
+            default_args = default_config.get('default_args', {})
+            dag_args = dag_config.get('default_args', {})
+            merged_args = {arg_key: dag_args.get(arg_key, default_args.get(arg_key)) 
+                        for arg_key in set(default_args) | set(dag_args)}
+
+            dag_params['default_args'] = merged_args
+
+            # Reconstruct dag with dag_params and existing nodes
+            updated_dag_config = {
+                'dag_params': dag_params,
+                'task_groups': dag_config.get('task_groups', {}),
+                'tasks': dag_config.get('tasks', {})
+            }
+            
+            config[dag_name] = updated_dag_config
+
+    return config
+
+
+def merge_defaults_new(default_config: Dict, dag_config: Dict) -> Dict:
+    """Merge parameters from default into each dag."""
+    
+    dag_params = {key: dag_config.get(key, default_config.get(key)) 
+                        for key in set(default_config) | set(dag_config)}
+
+    # Special handling for nested 'default_args' dictionary
+    default_args = default_config.get('default_args', {})
+    dag_args = dag_config.get('default_args', {})
+    merged_args = {arg_key: dag_args.get(arg_key, default_args.get(arg_key)) 
+                for arg_key in set(default_args) | set(dag_args)}
+
+    dag_params['default_args'] = merged_args
+    
+    updated_dag_config = reorganize_dag_params(dag_params)
+
+    return updated_dag_config
+    
+    
+    

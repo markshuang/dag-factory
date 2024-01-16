@@ -5,12 +5,18 @@ default:
     retries: 1
     retry_delay_sec: 300
     start_date: 2018-03-01
+  description: this is default description for dag
   default_view: tree
   max_active_runs: 1
   orientation: LR
   schedule_interval: 0 1 * * *
 example_dag:
+  default_args:
+    owner: custom_owner
+    start_date: 2 days
   description: "this dag uses task groups"
+  doc_md: '##here is a doc md string'
+  schedule_interval: 0 3 * * *
   task_groups:
     task_group_1:
       tooltip: "this is a task group"
@@ -26,7 +32,7 @@ example_dag:
     task_3:
       operator: airflow.operators.python_operator.PythonOperator
       python_callable_name: print_hello
-      python_callable_file: examples/print_hello.py
+      python_callable_file: /usr/src/examples/print_hello.py
       task_group_name: task_group_1
       dependencies: [task_2]
     task_4:

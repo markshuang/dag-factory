@@ -1,0 +1,78 @@
+{
+    "default": {
+        "default_args": {
+            "end_date": datetime.date(2018,3,5),
+            "owner": "default_owner",
+            "retries": 1,
+            "retry_delay_sec": 300,
+            "start_date": datetime.date(2018,3,1)
+        },
+        "description": "this is default description for dag",
+        "default_view": "tree",
+        "max_active_runs": 1,
+        "orientation": "LR",
+        "schedule_interval": "0 1 * * *"
+    },
+    "example_dag": {
+        "parameters": {
+            "doc_md": "##here is a doc md string",
+            "schedule_interval": "0 3 * * *",
+            "max_active_runs": 1,
+            "default_view": "tree",
+            "description": "this dag uses task groups",
+            "default_args": {
+                "retry_delay_sec": 300,
+                "start_date": "2 days",
+                "owner": "custom_owner",
+                "retries": 1,
+                "end_date": datetime.date(2018,
+                3,
+                5)
+            },
+            "orientation": "LR"
+        },
+        "task_groups": {
+            "task_group_1": {
+                "tooltip": "this is a task group",
+                "dependencies": [
+                    "task_1"
+                ]
+            }
+        },
+        "tasks": {
+            "task_1": {
+                "parameters": {
+                    "bash_command": "echo 1"
+                },
+                "operator": "airflow.operators.bash_operator.BashOperator"
+            },
+            "task_2": {
+                "parameters": {
+                    "bash_command": "echo 2"
+                },
+                "operator": "airflow.operators.bash_operator.BashOperator",
+                "task_group_name": "task_group_1"
+            },
+            "task_3": {
+                "parameters": {
+                    "python_callable_name": "print_hello",
+                    "python_callable_file": "/usr/src/examples/print_hello.py"
+                },
+                "operator": "airflow.operators.python_operator.PythonOperator",
+                "task_group_name": "task_group_1",
+                "dependencies": [
+                    "task_2"
+                ]
+            },
+            "task_4": {
+                "parameters": {
+                    "bash_command": "echo 1"
+                },
+                "operator": "airflow.operators.bash_operator.BashOperator",
+                "dependencies": [
+                    "task_group_1"
+                ]
+            }
+        }
+    }
+}
